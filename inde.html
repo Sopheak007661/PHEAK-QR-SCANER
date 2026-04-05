@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Scanner Tool</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-gradient);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            color: #fff;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 30px;
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+
+        h2 {
+            margin-bottom: 20px;
+            font-weight: 300;
+            letter-spacing: 1px;
+        }
+
+        #reader {
+            width: 100%;
+            border-radius: 15px;
+            overflow: hidden;
+            border: none !important; /* Removes library default border */
+        }
+
+        /* Styling the library's internal buttons */
+        #reader button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: opacity 0.3s;
+        }
+
+        #reader button:hover {
+            opacity: 0.8;
+        }
+
+        .result-card {
+            margin-top: 25px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            word-wrap: break-word;
+        }
+
+        #result {
+            color: #10b981; /* Emerald green for success */
+            font-weight: bold;
+            display: block;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2><b>PHY SOPHEAK <br> Scaner QR 🪟</b></h2>
+        
+        <div id="reader"></div>
+
+        <div class="result-card">
+            <span>Scan Result:</span>
+            <span id="result">Waiting for scan...</span>
+        </div>
+    </div>
+
+    <script>
+        // Callback function when a code is found
+        function onScanSuccess(decodedText, decodedResult) {
+            // Update the UI with the result
+            document.getElementById('result').innerText = decodedText;
+            
+            // Optional: You could play a sound or send this to your 
+            // Factory System API here
+            console.log(`Scan Result: ${decodedText}`);
+        }
+
+        function onScanFailure(error) {
+            // We ignore failures to keep the scanner silent during idle frames
+        }
+
+        // Initialize the scanner
+        let html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", 
+            { 
+                fps: 10, 
+                qrbox: { width: 250, height: 250 },
+                aspectRatio: 1.0 
+            }, 
+            false
+        );
+
+        html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+    </script>
+</body>
+</html>

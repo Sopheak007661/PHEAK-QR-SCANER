@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto-Redirect QR Scanner</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --bg-gradient: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-gradient);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            color: #fff;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 30px;
+            width: 90%;
+            max-width: 450px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        #reader {
+            width: 100%;
+            border-radius: 16px;
+            overflow: hidden;
+            border: none !important;
+        }
+
+        /* Style for the "Allow Camera" button */
+        #reader button {
+            background: var(--primary);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 10px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+
+        .status-box {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+        }
+
+        #status-text {
+            color: #818cf8;
+            font-size: 0.9rem;
+        }
+
+        .loading-dots:after {
+            content: ' .';
+            animation: dots 1.5s steps(5, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { color: rgba(0,0,0,0); text-shadow: .25em 0 0 rgba(0,0,0,0), .5em 0 0 rgba(0,0,0,0); }
+            40% { color: white; text-shadow: .25em 0 0 rgba(0,0,0,0), .5em 0 0 rgba(0,0,0,0); }
+            60% { text-shadow: .25em 0 0 white, .5em 0 0 rgba(0,0,0,0); }
+            80%, 100% { text-shadow: .25em 0 0 white, .5em 0 0 white; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2 style="margin-top:0">Direct QR Redirect</h2>
+        
+        <div id="reader"></div>
+
+        <div class="status-box">
+            <span id="status-text">Align QR code within the frame</span>
+        </div>
+    </div>
+
+    <script>
+        function onScanSuccess(decodedText) {
+            // 1. Stop the scanner to prevent multiple scans
+            html5QrcodeScanner.clear();
+
+            // 2. Update UI to show redirecting status
+            const statusText = document.getElementById('status-text');
+            statusText.innerHTML = `<span class="loading-dots">Found link! Redirecting to ${decodedText}</span>`;
+            statusText.style.color = "#10b981";
+
+            // 3. Logic to check if it's a URL and redirect
+            // If the scanned text starts with http, redirect immediately
+            setTimeout(() => {
+                if (decodedText.startsWith("http") || decodedText.startsWith("www")) {
+                    let url = decodedText.startsWith("www") ? "https://" + decodedText : decodedText;
+                    window.location.href = url;
+                } else {
+                    alert("Scanned text is not a URL: " + decodedText);
+                    // Reload the scanner if it wasn't a link
+                    location.reload();
+                }
+            }, 1000); // 1 second delay so user can see the result
+        }
+
+        let html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", 
+            { 
+                fps: 15, 
+                qrbox: { width: 250, height: 250 } 
+            }
+        );
+        
+        html5QrcodeScanner.render(onScanSuccess);
+    </script>
+</body>
+</html>
