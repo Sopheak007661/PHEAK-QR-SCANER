@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QR Scanner</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Outfit:wght@300;500;700;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<style>
+  :root {
+    --bg: #04070a;
+    --panel: #080f14;
+    --card: #0c1520;
+    --border: #152130;
+    --scan: #00e5ff;
+    --scan2: #7b2fff;
+    --ok: #00ffb2;
+    --warn: #ffb300;
+    --danger: #ff4466;
+    --text: #cde4f0;
+    --dim: #4a6a80;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    min-height: 100vh;
+    font-family: 'Outfit', sans-serif;
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 2rem 1rem 3rem;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.025) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 520px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.4rem;
+  }
+
+  /* Header */
+  .header { text-align: center; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--scan);
+    border: 1px solid rgba(0,229,255,0.25);
+    border-radius: 4px;
+    padding: 4px 12px;
+    margin-bottom: 0.8rem;
+    background: rgba(0,229,255,0.04);
+  }
+
+  .badge::before {
+    content: '';
+    width: 6px; height: 6px;
+    background: var(--scan);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--scan);
+    animation: blink 1.4s ease-in-out infinite;
+  }
+
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  h1 {
+    font-size: clamp(2rem, 8vw, 3rem);
+    font-weight: 900;
+    letter-spacing: -0.03em;
+    background: linear-gradient(120deg, #fff 0%, var(--scan) 60%, var(--scan2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+    margin-bottom: 0.4rem;
+  }
+
+  .sub { color: var(--dim); font-size: 0.9rem; font-weight: 300; }
+
+  /* Viewport */
+  .viewport-wrap {
+    width: 100%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .viewport-wrap::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--scan), transparent);
+    z-index: 5;
+  }
+
+  #video-container {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    background: #000;
+    overflow: hidden;
+  }
+
+  #video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  #canvas { display: none; }
+
+  /* Corner brackets */
+  .corners {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  .corner {
+    position: absolute;
+    width: 36px;
+    height: 36px;
+    border-color: var(--scan);
+    border-style: solid;
+    opacity: 0.9;
+  }
+
+  .corner.tl { top: 20px; left: 20px; border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
+  .corner.tr { top: 20px; right: 20px; border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
+  .corner.bl { bottom: 20px; left: 20px; border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
+  .corner.br { bottom: 20px; right: 20px; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+
+  /* Scan line */
+  .scan-line {
+    position: absolute;
+    left: 20px; right: 20px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--scan), transparent);
+    box-shadow: 0 0 10px var(--scan), 0 0 20px rgba(0,229,255,0.4);
+    top: 20px;
+    z-index: 4;
+    animation: scanline 2.4s ease-in-out infinite;
+    display: none;
+  }
+
+  @keyframes scanline {
+    0% { top: 20px; opacity: 1; }
+    45% { opacity: 1; }
+    50% { top: calc(100% - 20px); opacity: 0.4; }
+    51% { top: 20px; opacity: 0; }
+    55% { opacity: 1; }
+    100% { top: 20px; opacity: 1; }
+  }
+
+  /* Idle overlay */
+  .idle-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(4,7,10,0.85);
+    z-index: 6;
+    gap: 1rem;
+    text-align: center;
+    padding: 2rem;
+  }
+
+  .idle-icon {
+    width: 70px; height: 70px;
+    border: 2px solid rgba(0,229,255,0.3);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--scan);
+    opacity: 0.7;
+  }
+
+  .idle-text {
+    font-size: 0.9rem;
+    color: var(--dim);
+    line-height: 1.5;
+  }
+
+  /* Success flash */
+  .success-flash {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,255,178,0.15);
+    z-index: 7;
+    border-radius: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.1s;
+  }
+
+  .success-flash.active { opacity: 1; }
+
+  /* Control bar */
+  .controls {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .btn {
+    flex: 1;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .btn.primary {
+    background: var(--scan);
+    color: #020c10;
+    border-color: var(--scan);
+  }
+
+  .btn.primary:hover { background: #33ecff; box-shadow: 0 0 20px rgba(0,229,255,0.3); }
+  .btn:not(.primary):hover { border-color: rgba(0,229,255,0.3); color: var(--scan); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  /* Upload label */
+  .upload-label {
+    flex: 1;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px dashed var(--border);
+    background: var(--card);
+    color: var(--dim);
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+  }
+
+  .upload-label:hover { border-color: rgba(0,229,255,0.3); color: var(--scan); }
+  #file-input { display: none; }
+
+  /* Result card */
+  #result-card {
+    width: 100%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    display: none;
+    animation: popIn 0.35s cubic-bezier(0.16,1,0.3,1);
+  }
+
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(0.95) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .result-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .result-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--ok);
+    box-shadow: 0 0 10px var(--ok);
+    flex-shrink: 0;
+  }
+
+  .result-dot.url { background: var(--scan); box-shadow: 0 0 10px var(--scan); }
+  .result-dot.warn { background: var(--warn); box-shadow: 0 0 10px var(--warn); }
+
+  .result-type {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--dim);
+    flex-shrink: 0;
+  }
+
+  .result-body { padding: 14px 16px; }
+
+  #result-text {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.82rem;
+    color: var(--text);
+    word-break: break-all;
+    line-height: 1.6;
+    background: var(--panel);
+    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    margin-bottom: 12px;
+    white-space: pre-wrap;
+  }
+
+  .result-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .result-btn {
+    padding: 9px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+  }
+
+  .result-btn.open {
+    background: var(--scan);
+    color: #020c10;
+    border-color: var(--scan);
+  }
+
+  .result-btn.open:hover { background: #33ecff; }
+  .result-btn:not(.open):hover { border-color: rgba(0,229,255,0.3); color: var(--scan); }
+
+  /* History */
+  #history-section {
+    width: 100%;
+    display: none;
+  }
+
+  .history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .history-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+
+  .clear-btn {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 0.1em;
+    color: var(--danger);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-transform: uppercase;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+  }
+
+  .clear-btn:hover { opacity: 1; }
+
+  .history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .history-item {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  .history-item:hover { border-color: rgba(0,229,255,0.25); }
+
+  .history-icon { font-size: 1rem; flex-shrink: 0; }
+
+  .history-content { flex: 1; overflow: hidden; }
+
+  .history-val {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .history-time {
+    font-size: 0.65rem;
+    color: var(--dim);
+    margin-top: 2px;
+  }
+
+  /* Camera select */
+  .camera-select-wrap {
+    width: 100%;
+    display: none;
+  }
+
+  .camera-select {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--dim);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    appearance: none;
+    cursor: pointer;
+  }
+
+  .camera-select:focus { outline: none; border-color: rgba(0,229,255,0.3); }
+  .camera-select option { background: #0c1520; }
+
+  /* Status bar */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--dim);
+    letter-spacing: 0.05em;
+  }
+
+  .status-indicator {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--dim);
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+
+  .status-indicator.active {
+    background: var(--ok);
+    box-shadow: 0 0 8px var(--ok);
+    animation: blink 1.4s ease-in-out infinite;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <div class="header">
+    <div class="badge">Live Scanner</div>
+    <h1>QR Scanner</h1>
+    <p class="sub">Point your camera — results appear instantly</p>
+  </div>
+
+  <!-- Camera viewport -->
+  <div class="viewport-wrap">
+    <div id="video-container">
+      <video id="video" playsinline muted autoplay></video>
+      <canvas id="canvas"></canvas>
+
+      <div class="corners">
+        <div class="corner tl"></div>
+        <div class="corner tr"></div>
+        <div class="corner bl"></div>
+        <div class="corner br"></div>
+      </div>
+
+      <div class="scan-line" id="scan-line"></div>
+      <div class="success-flash" id="success-flash"></div>
+
+      <div class="idle-overlay" id="idle-overlay">
+        <div class="idle-icon">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/>
+            <path d="M14 14h.01M18 14h.01M14 18h.01M18 18h.01M16 16h.01"/>
+          </svg>
+        </div>
+        <p class="idle-text">Press <strong style="color:var(--scan)">Start Camera</strong> to begin scanning<br>or upload an image with a QR code</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status -->
+  <div class="status-bar">
+    <div class="status-indicator" id="status-dot"></div>
+    <span id="status-text">Camera inactive</span>
+  </div>
+
+  <!-- Camera select -->
+  <div class="camera-select-wrap" id="camera-select-wrap">
+    <select id="camera-select" class="camera-select"></select>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn primary" id="start-btn">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 9-14 9V3z"/></svg>
+      Start Camera
+    </button>
+    <label class="upload-label" for="file-input">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Upload Image
+    </label>
+    <input type="file" id="file-input" accept="image/*">
+  </div>
+
+  <!-- Result -->
+  <div id="result-card">
+    <div class="result-top">
+      <div class="result-dot" id="result-dot"></div>
+      <span class="result-type" id="result-type">TEXT</span>
+    </div>
+    <div class="result-body">
+      <div id="result-text"></div>
+      <div class="result-actions" id="result-actions"></div>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div id="history-section">
+    <div class="history-header">
+      <span class="history-title">▸ Recent Scans</span>
+      <button class="clear-btn" id="clear-btn">Clear All</button>
+    </div>
+    <div class="history-list" id="history-list"></div>
+  </div>
+
+</div>
+
+<script>
+const video        = document.getElementById('video');
+const canvas       = document.getElementById('canvas');
+const ctx          = canvas.getContext('2d', { willReadFrequently: true });
+const startBtn     = document.getElementById('start-btn');
+const fileInput    = document.getElementById('file-input');
+const idleOverlay  = document.getElementById('idle-overlay');
+const scanLine     = document.getElementById('scan-line');
+const statusDot    = document.getElementById('status-dot');
+const statusText   = document.getElementById('status-text');
+const resultCard   = document.getElementById('result-card');
+const resultDot    = document.getElementById('result-dot');
+const resultType   = document.getElementById('result-type');
+const resultTextEl = document.getElementById('result-text');
+const resultActions= document.getElementById('result-actions');
+const successFlash = document.getElementById('success-flash');
+const cameraWrap   = document.getElementById('camera-select-wrap');
+const cameraSelect = document.getElementById('camera-select');
+const historySection = document.getElementById('history-section');
+const historyList  = document.getElementById('history-list');
+const clearBtn     = document.getElementById('clear-btn');
+
+let stream = null;
+let scanTimer = null;
+let scanning = false;
+let lastResult = '';
+let history = JSON.parse(localStorage.getItem('qr_history') || '[]');
+let cameras = [];
+let worker = null;
+let workerReady = false;
+let workerBusy = false;
+
+// Max dimension for downscaled scan canvas — keeps jsQR fast
+const SCAN_SIZE = 400;
+
+// Build an inline Web Worker that runs jsQR off the main thread
+function buildWorker() {
+  const blob = new Blob([`
+    importScripts('https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js');
+    self.onmessage = function(e) {
+      const { data, width, height } = e.data;
+      const code = jsQR(data, width, height, { inversionAttempts: 'dontInvert' });
+      self.postMessage(code ? code.data : null);
+    };
+  `], { type: 'application/javascript' });
+  worker = new Worker(URL.createObjectURL(blob));
+  worker.onmessage = (e) => {
+    workerBusy = false;
+    if (e.data) onDecoded(e.data);
+  };
+  workerReady = true;
+}
+
+// Render history
+function renderHistory() {
+  if (history.length === 0) { historySection.style.display = 'none'; return; }
+  historySection.style.display = 'block';
+  historyList.innerHTML = '';
+  [...history].reverse().slice(0, 8).forEach(item => {
+    const el = document.createElement('div');
+    el.className = 'history-item';
+    const icon = isURL(item.value) ? '🔗' : isEmail(item.value) ? '✉️' : isPhone(item.value) ? '📞' : '📄';
+    el.innerHTML = `
+      <span class="history-icon">${icon}</span>
+      <div class="history-content">
+        <div class="history-val">${escHtml(item.value)}</div>
+        <div class="history-time">${item.time}</div>
+      </div>`;
+    el.addEventListener('click', () => showResult(item.value));
+    historyList.appendChild(el);
+  });
+}
+
+clearBtn.addEventListener('click', () => {
+  history = [];
+  localStorage.removeItem('qr_history');
+  renderHistory();
+});
+
+renderHistory();
+
+function isURL(s) { return /^https?:\/\//i.test(s) || /^www\./i.test(s); }
+function isEmail(s) { return /^mailto:|^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s); }
+function isPhone(s) { return /^tel:|^\+?[\d\s\-()]{7,}$/.test(s); }
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function setStatus(text, active=false) {
+  statusText.textContent = text;
+  statusDot.className = 'status-indicator' + (active ? ' active' : '');
+}
+
+function flashSuccess() {
+  successFlash.classList.add('active');
+  setTimeout(() => successFlash.classList.remove('active'), 250);
+  // vibrate if supported
+  if (navigator.vibrate) navigator.vibrate(80);
+}
+
+function showResult(value) {
+  resultTextEl.textContent = value;
+  resultActions.innerHTML = '';
+
+  // Classify
+  let type = 'TEXT';
+  let dotClass = '';
+
+  if (isURL(value)) {
+    type = 'URL / LINK';
+    dotClass = 'url';
+    const url = value.startsWith('http') ? value : 'https://' + value;
+
+    const openBtn = document.createElement('a');
+    openBtn.className = 'result-btn open';
+    openBtn.href = url;
+    openBtn.target = '_blank';
+    openBtn.rel = 'noopener noreferrer';
+    openBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> Open Link`;
+    resultActions.appendChild(openBtn);
+
+  } else if (isEmail(value)) {
+    type = 'EMAIL';
+    const mail = value.startsWith('mailto:') ? value : 'mailto:' + value;
+    const btn = document.createElement('a');
+    btn.className = 'result-btn open';
+    btn.href = mail;
+    btn.innerHTML = `✉️ Send Email`;
+    resultActions.appendChild(btn);
+
+  } else if (isPhone(value)) {
+    type = 'PHONE';
+    const tel = value.startsWith('tel:') ? value : 'tel:' + value.replace(/\s/g,'');
+    const btn = document.createElement('a');
+    btn.className = 'result-btn open';
+    btn.href = tel;
+    btn.innerHTML = `📞 Call`;
+    resultActions.appendChild(btn);
+
+  } else if (/^WIFI:/i.test(value)) {
+    type = 'WI-FI';
+    dotClass = 'warn';
+  } else if (/^BEGIN:VCARD/i.test(value)) {
+    type = 'CONTACT';
+  }
+
+  // Copy button always
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'result-btn';
+  copyBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy`;
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(value).then(() => {
+      copyBtn.textContent = '✓ Copied!';
+      setTimeout(() => { copyBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy`; }, 1500);
+    });
+  });
+  resultActions.appendChild(copyBtn);
+
+  resultType.textContent = type;
+  resultDot.className = 'result-dot' + (dotClass ? ' ' + dotClass : '');
+  resultCard.style.display = 'block';
+}
+
+function saveHistory(value) {
+  const now = new Date();
+  const time = now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) + ' · ' + now.toLocaleDateString();
+  history = history.filter(i => i.value !== value);
+  history.push({ value, time });
+  if (history.length > 20) history.shift();
+  localStorage.setItem('qr_history', JSON.stringify(history));
+  renderHistory();
+}
+
+function onDecoded(value) {
+  if (value === lastResult) return;
+  lastResult = value;
+  flashSuccess();
+  setStatus('QR code detected!', true);
+  showResult(value);
+  saveHistory(value);
+  setTimeout(() => { lastResult = ''; }, 3000);
+}
+
+// Fast scan loop — throttled to ~15fps, downscaled canvas, off-thread jsQR
+function scanFrame() {
+  if (!scanning) return;
+  if (video.readyState === video.HAVE_ENOUGH_DATA && !workerBusy) {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (vw && vh) {
+      const scale = Math.min(SCAN_SIZE / vw, SCAN_SIZE / vh, 1);
+      const sw = Math.round(vw * scale), sh = Math.round(vh * scale);
+      if (canvas.width !== sw || canvas.height !== sh) { canvas.width = sw; canvas.height = sh; }
+      ctx.drawImage(video, 0, 0, sw, sh);
+      const imgData = ctx.getImageData(0, 0, sw, sh);
+      if (workerReady) {
+        workerBusy = true;
+        worker.postMessage({ data: imgData.data, width: sw, height: sh }, [imgData.data.buffer]);
+      } else {
+        const code = jsQR(imgData.data, sw, sh, { inversionAttempts: 'dontInvert' });
+        if (code) onDecoded(code.data);
+      }
+    }
+  }
+  scanTimer = setTimeout(scanFrame, 66);
+}
+
+// Get cameras
+async function getCameras() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    cameras = devices.filter(d => d.kind === 'videoinput');
+    if (cameras.length > 1) {
+      cameraWrap.style.display = 'block';
+      cameraSelect.innerHTML = cameras.map((c, i) =>
+        `<option value="${c.deviceId}">${c.label || 'Camera ' + (i+1)}</option>`
+      ).join('');
+      // Prefer back camera
+      const backIdx = cameras.findIndex(c => /back|rear|environment/i.test(c.label));
+      if (backIdx > -1) cameraSelect.selectedIndex = backIdx;
+    }
+  } catch(e) {}
+}
+
+async function startCamera(deviceId) {
+  if (stream) stopCamera();
+  const constraints = {
+    video: deviceId
+      ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+      : { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+  };
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+    await video.play();
+    await getCameras();
+    buildWorker();
+    idleOverlay.style.display = 'none';
+    scanLine.style.display = 'block';
+    scanning = true;
+    workerBusy = false;
+    setStatus('Scanning for QR codes...', true);
+    startBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Stop`;
+    startBtn.style.background = 'rgba(255,68,102,0.15)';
+    startBtn.style.color = 'var(--danger)';
+    startBtn.style.borderColor = 'rgba(255,68,102,0.3)';
+    scanFrame();
+  } catch(e) {
+    setStatus('Camera permission denied');
+    alert('Could not access camera. Please allow camera permissions.');
+  }
+}
+
+function stopCamera() {
+  scanning = false;
+  if (scanTimer) clearTimeout(scanTimer);
+  if (worker) { worker.terminate(); worker = null; workerReady = false; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.srcObject = null;
+  idleOverlay.style.display = 'flex';
+  scanLine.style.display = 'none';
+  cameraWrap.style.display = 'none';
+  setStatus('Camera inactive');
+  startBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 9-14 9V3z"/></svg> Start Camera`;
+  startBtn.style.background = '';
+  startBtn.style.color = '';
+  startBtn.style.borderColor = '';
+}
+
+startBtn.addEventListener('click', () => {
+  if (scanning) stopCamera();
+  else startCamera(cameraSelect.value || null);
+});
+
+cameraSelect.addEventListener('change', () => {
+  if (scanning) startCamera(cameraSelect.value);
+});
+
+// Upload image
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'attemptBoth' });
+      if (code) {
+        flashSuccess();
+        showResult(code.data);
+        saveHistory(code.data);
+        setStatus('QR code found in image!', true);
+      } else {
+        setStatus('No QR code found in image');
+        alert('No QR code detected in this image. Try a clearer photo.');
+      }
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  fileInput.value = '';
+});
+</script>
+</body>
+</html>
